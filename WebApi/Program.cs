@@ -1,9 +1,15 @@
-using WebApi.Apis;
 var builder = WebApplication.CreateBuilder(args);
 
+// Add services to the container.
+builder.Services.AddControllersWithViews();
+
+// Add HttpClient for API calls
 builder.Services.AddHttpClient();
 
-builder.Services.AddAuthentication(options => { options.DefaultScheme = "cookie"; })
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = "cookie";
+    })
     .AddCookie("cookie", options =>
     {
         options.Cookie.Name = "__Host-AuthCookie";
@@ -17,11 +23,9 @@ builder.Services.AddAuthentication(options => { options.DefaultScheme = "cookie"
 
 builder.Services.AddAuthorization();
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
 var app = builder.Build();
 
+// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -29,17 +33,16 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRouting();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseSwagger();
-app.UseSwaggerUI();
-if (app.Environment.IsDevelopment())
-{
-    app.Map("/", () => Results.Redirect("/swagger"));
-}
+app.MapStaticAssets();
 
-app.AddApisFromBff();
+app.MapControllerRoute(
+        name: "default",
+        pattern: "{controller=Home}/{action=Index}/{id?}")
+    .WithStaticAssets();
 
 await app.RunAsync();
