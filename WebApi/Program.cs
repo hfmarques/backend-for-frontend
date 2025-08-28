@@ -1,3 +1,4 @@
+using WebApi;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -28,6 +29,19 @@ builder.Services.AddOpenIdConnectAccessTokenManagement(o =>
     o.RefreshBeforeExpiration = TimeSpan.FromSeconds(15);
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("https://localtest.me:5001")
+            .AllowAnyMethod()
+            .WithHeaders("X-CSRF", "Content-Type")
+            .AllowCredentials()
+            // Optionally cache for 10 minutes
+            .SetPreflightMaxAge(TimeSpan.FromMinutes(10));
+    });
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -39,6 +53,9 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+
+app.UseCors();
+app.CheckForCsrfHeader();
 
 app.UseAuthentication();
 app.UseAuthorization();
