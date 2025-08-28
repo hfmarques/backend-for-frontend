@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
+using Duende.AccessTokenManagement.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,14 +10,10 @@ namespace WebApi.Controllers
     [ApiController]
     [Route("api")]
     [Authorize]
-    public class ApiController : ControllerBase
+    public class ApiController(
+        HttpClient httpClient,
+        IUserTokenManagementService tokenManagement) : ControllerBase
     {
-        private readonly HttpClient _httpClient;
-
-        public ApiController(HttpClient httpClient)
-        {
-            _httpClient = httpClient;
-        }
 
         [HttpGet("local")]
         public IActionResult Local()
@@ -35,26 +32,30 @@ namespace WebApi.Controllers
         {
             try
             {
-                // Get access token from OIDC authentication
-                var accessToken = await HttpContext.GetTokenAsync("access_token");
-
-                if (string.IsNullOrEmpty(accessToken))
+                // Get access token using Duende Access Token Management
+                // (handles automatic refresh)
+                var tokenResult = await tokenManagement.GetAccessTokenAsync(User);
+                if (tokenResult.IsError)
                 {
-                    return StatusCode((int)HttpStatusCode.Unauthorized, new
+                    return StatusCode((int) HttpStatusCode.Unauthorized, new
                     {
-                        error = "No access token available",
-                        details = "User must be authenticated with OIDC to access remote API",
-                        statusCode = 401
+                        error = "Failed to get access token",
+                        details = $"Token error: {tokenResult.Error}",
+                        statusCode = 401,
+                        tokenManagementUsed = true
                     });
                 }
 
-                // Create HTTP request with Authorization header to our remote API
-                // Important, you need to update the URL to match your own remote API endpoint, the secure.nu domain is not always available
-                var request = new HttpRequestMessage(HttpMethod.Get, "https://www.secure.nu/tokenapi/gettime");
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                // Create HTTP request with Authorization header
+                const string url = "https://www.secure.nu/tokenapi/gettime";
+                var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+                var authHeader = new AuthenticationHeaderValue("Bearer",
+                    tokenResult.AccessToken);
+                request.Headers.Authorization = authHeader;
 
                 // Send request with token
-                var response = await _httpClient.SendAsync(request);
+                var response = await httpClient.SendAsync(request);
                 var content = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
@@ -63,22 +64,22 @@ namespace WebApi.Controllers
                     {
                         message = "Remote API call successful with access token",
                         data = content,
-                        statusCode = (int)response.StatusCode,
+                        statusCode = (int) response.StatusCode,
                     });
                 }
                 else
                 {
-                    return StatusCode((int)response.StatusCode, new
+                    return StatusCode((int) response.StatusCode, new
                     {
                         error = $"Remote API returned error: {response.StatusCode}",
                         details = content,
-                        statusCode = (int)response.StatusCode
+                        statusCode = (int) response.StatusCode
                     });
                 }
             }
             catch (HttpRequestException ex)
             {
-                return StatusCode((int)HttpStatusCode.BadGateway, new
+                return StatusCode((int) HttpStatusCode.BadGateway, new
                 {
                     error = "Failed to connect to remote API",
                     details = ex.Message,
@@ -87,7 +88,7 @@ namespace WebApi.Controllers
             }
             catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
             {
-                return StatusCode((int)HttpStatusCode.RequestTimeout, new
+                return StatusCode((int) HttpStatusCode.RequestTimeout, new
                 {
                     error = "Remote API request timed out",
                     details = ex.Message,
@@ -96,7 +97,7 @@ namespace WebApi.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new
+                return StatusCode((int) HttpStatusCode.InternalServerError, new
                 {
                     error = "An unexpected error occurred",
                     details = ex.Message,

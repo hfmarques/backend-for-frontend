@@ -23,6 +23,11 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddOpenIdConnectAccessTokenManagement(o =>
+{
+    o.RefreshBeforeExpiration = TimeSpan.FromSeconds(15);
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
